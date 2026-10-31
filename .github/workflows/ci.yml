@@ -59,3 +59,26 @@ jobs:
           if (-not (Select-String -Path 'src/Plugin.cs' -Pattern 'BepInPlugin' -Quiet)) {
             throw 'BepInEx plugin declaration was not found'
           }
+
+  release:
+    name: Create release
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Build ${GITHUB_RUN_NUMBER}" \
+            --notes "Automated release for master commit ${GITHUB_SHA}." \
+            --prerelease
