@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>FirestoneCardPopularity</AssemblyName>
+    <RootNamespace>FirestoneCardPopularity</RootNamespace>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp"><HintPath>..\refs\Assembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="UnityEngine"><HintPath>..\refs\UnityEngine.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>..\refs\UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>..\refs\UnityEngine.InputLegacyModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>..\refs\UnityEngine.UIModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>..\refs\UnityEngine.TextRenderingModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>..\refs\UnityEngine.IMGUIModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>..\refs\UnityEngine.UI.dll</HintPath></Reference>
+    <Reference Include="Blizzard.T5.UberText.Runtime"><HintPath>..\refs\Blizzard.T5.UberText.Runtime.dll</HintPath></Reference>
+    <Reference Include="BepInEx"><HintPath>..\refs\BepInEx.dll</HintPath></Reference>
+    <Reference Include="0Harmony"><HintPath>..\refs\0Harmony.dll</HintPath></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>..\refs\Newtonsoft.Json.dll</HintPath></Reference>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+</Project>
