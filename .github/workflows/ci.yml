@@ -43,13 +43,22 @@ jobs:
           )
 
           $missing = $required | Where-Object { -not (Test-Path $_) }
-          if ($missing.Count -eq 0) {
-            dotnet build src/FirestoneCardPopularity.csproj --configuration Release --no-restore
-          } else {
-            Write-Host 'Game DLL references are intentionally not committed.'
-            Write-Host 'Skipping compilation in CI; build locally after copying references from Hearthstone.'
-            Write-Host ('Missing references: ' + ($missing -join ', '))
+          if ($missing.Count -ne 0) {
+            throw ('Required Hearthstone/BepInEx references are missing: ' + ($missing -join ', ') + '. Provide them through a private artifact or repository setup before publishing releases.')
           }
+          dotnet build src/FirestoneCardPopularity.csproj --configuration Release --no-restore
+
+      - name: Package plugin
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item 'src/bin/Release/net472/FirestoneCardPopularity.dll' 'dist/FirestoneCardPopularity.dll'
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirestoneCardPopularity-plugin
+          path: dist/FirestoneCardPopularity.dll
 
       - name: Validate source files
         shell: pwsh
@@ -69,16 +78,42 @@ jobs:
       contents: write
 
     steps:
-      - name: Check out repository
+      - name: Check out repository history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FirestoneCardPopularity-plugin
+          path: dist
+
+      - name: Create release notes from commits
+        id: notes
+        shell: bash
+        run: |
+          previous=$(git tag --sort=-version:refname | head -n 1)
+          if [ -n "$previous" ]; then
+            range="$previous..$GITHUB_SHA"
+            title="Changes since $previous"
+          else
+            range="$GITHUB_SHA"
+            title="Initial release"
+          fi
+          {
+            echo "$title"
+            echo
+            git log "$range" --pretty=format:'- %s (%h)' --no-merges
+          } > release-notes.md
+          echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" \
+          gh release create "${{ steps.notes.outputs.tag }}" \
             --target "$GITHUB_SHA" \
-            --title "Build ${GITHUB_RUN_NUMBER}" \
-            --notes "Automated release for master commit ${GITHUB_SHA}." \
-            --prerelease
+            --title "Firestone HSReplay Card Popularity ${{ steps.notes.outputs.tag }}" \
+            --notes-file release-notes.md \
+            dist/FirestoneCardPopularity.dll
