@@ -1,0 +1,12 @@
+# Build output
+src/bin/
+src/obj/
+
+# Local game references and generated logs
+refs/
+*.log
+
+# IDE files
+.vs/
+*.user
+*.suo

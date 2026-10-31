@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate project
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download private Hearthstone references from R2
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_OBJECT: ${{ secrets.R2_OBJECT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:R2_BUCKET) -or [string]::IsNullOrWhiteSpace($env:R2_OBJECT)) {
+            throw 'R2_BUCKET and R2_OBJECT repository variables are required.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ACCOUNT_ID)) {
+            throw 'CLOUDFLARE_ACCOUNT_ID repository secret is required.'
+          }
+          aws s3 cp "s3://$($env:R2_BUCKET)/$($env:R2_OBJECT)" hearthstone-refs.zip --endpoint-url "https://$($env:CLOUDFLARE_ACCOUNT_ID).r2.cloudflarestorage.com"
+          Expand-Archive -Path hearthstone-refs.zip -DestinationPath refs -Force
+          Remove-Item hearthstone-refs.zip
+
+      - name: Restore dependencies
+        run: dotnet restore src/FirestoneCardPopularity.csproj
+
+      - name: Build when game references are available
+        shell: pwsh
+        run: |
+          $required = @(
+            'refs/Assembly-CSharp.dll',
+            'refs/UnityEngine.dll',
+            'refs/UnityEngine.CoreModule.dll',
+            'refs/UnityEngine.UIModule.dll',
+            'refs/UnityEngine.TextRenderingModule.dll',
+            'refs/UnityEngine.IMGUIModule.dll',
+            'refs/UnityEngine.InputLegacyModule.dll',
+            'refs/BepInEx.dll',
+            'refs/0Harmony.dll',
+            'refs/Newtonsoft.Json.dll'
+          )
+
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing.Count -ne 0) {
+            throw ('Required Hearthstone/BepInEx references are missing: ' + ($missing -join ', ') + '. Provide them through a private artifact or repository setup before publishing releases.')
+          }
+          dotnet build src/FirestoneCardPopularity.csproj --configuration Release --no-restore
+
+      - name: Package plugin
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item 'src/bin/Release/net472/FirestoneCardPopularity.dll' 'dist/FirestoneCardPopularity.dll'
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirestoneCardPopularity-plugin
+          path: dist/FirestoneCardPopularity.dll
+
+      - name: Validate source files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'README.md')) { throw 'README.md is missing' }
+          if (-not (Test-Path 'src/Plugin.cs')) { throw 'src/Plugin.cs is missing' }
+          if (-not (Select-String -Path 'src/Plugin.cs' -Pattern 'BepInPlugin' -Quiet)) {
+            throw 'BepInEx plugin declaration was not found'
+          }
+
+  release:
+    name: Create release
+    needs: validate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FirestoneCardPopularity-plugin
+          path: dist
+
+      - name: Create release notes from commits
+        id: notes
+        shell: bash
+        run: |
+          previous=$(git tag --sort=-version:refname | head -n 1)
+          if [ -n "$previous" ]; then
+            range="$previous..$GITHUB_SHA"
+            title="Changes since $previous"
+          else
+            range="$GITHUB_SHA"
+            title="Initial release"
+          fi
+          {
+            echo "$title"
+            echo
+            git log "$range" --pretty=format:'- %s (%h)' --no-merges
+          } > release-notes.md
+          echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.notes.outputs.tag }}" \
+            --target "$GITHUB_SHA" \
+            --title "Firestone HSReplay Card Popularity ${{ steps.notes.outputs.tag }}" \
+            --notes-file release-notes.md \
+            dist/FirestoneCardPopularity.dll
