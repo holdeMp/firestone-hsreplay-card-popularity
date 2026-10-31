@@ -31,8 +31,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_BUCKET: ${{ vars.R2_BUCKET }}
-          R2_OBJECT: ${{ vars.R2_OBJECT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_OBJECT: ${{ secrets.R2_OBJECT }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:R2_BUCKET) -or [string]::IsNullOrWhiteSpace($env:R2_OBJECT)) {
             throw 'R2_BUCKET and R2_OBJECT repository variables are required.'
