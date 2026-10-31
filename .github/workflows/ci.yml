@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate project
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore src/FirestoneCardPopularity.csproj
+
+      - name: Build when game references are available
+        shell: pwsh
+        run: |
+          $required = @(
+            'refs/Assembly-CSharp.dll',
+            'refs/UnityEngine.dll',
+            'refs/UnityEngine.CoreModule.dll',
+            'refs/UnityEngine.UIModule.dll',
+            'refs/UnityEngine.TextRenderingModule.dll',
+            'refs/UnityEngine.IMGUIModule.dll',
+            'refs/UnityEngine.InputLegacyModule.dll',
+            'refs/BepInEx.dll',
+            'refs/0Harmony.dll',
+            'refs/Newtonsoft.Json.dll'
+          )
+
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing.Count -eq 0) {
+            dotnet build src/FirestoneCardPopularity.csproj --configuration Release --no-restore
+          } else {
+            Write-Host 'Game DLL references are intentionally not committed.'
+            Write-Host 'Skipping compilation in CI; build locally after copying references from Hearthstone.'
+            Write-Host ('Missing references: ' + ($missing -join ', '))
+          }
+
+      - name: Validate source files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'README.md')) { throw 'README.md is missing' }
+          if (-not (Test-Path 'src/Plugin.cs')) { throw 'src/Plugin.cs is missing' }
+          if (-not (Select-String -Path 'src/Plugin.cs' -Pattern 'BepInPlugin' -Quiet)) {
+            throw 'BepInEx plugin declaration was not found'
+          }
