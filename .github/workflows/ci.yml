@@ -24,18 +24,25 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore private game references
+      - name: Download private Hearthstone references from R2
         shell: pwsh
         env:
-          REFS_ZIP_B64: ${{ secrets.HEARTHSTONE_REFS_ZIP_B64 }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_OBJECT: ${{ vars.R2_OBJECT }}
         run: |
-          if (-not [string]::IsNullOrWhiteSpace($env:REFS_ZIP_B64)) {
-            [IO.File]::WriteAllBytes('hearthstone-refs.zip', [Convert]::FromBase64String($env:REFS_ZIP_B64))
-            Expand-Archive -Path hearthstone-refs.zip -DestinationPath refs -Force
-            Remove-Item hearthstone-refs.zip
-          } else {
-            Write-Host 'HEARTHSTONE_REFS_ZIP_B64 is not configured; build will report missing references.'
+          if ([string]::IsNullOrWhiteSpace($env:R2_BUCKET) -or [string]::IsNullOrWhiteSpace($env:R2_OBJECT)) {
+            throw 'R2_BUCKET and R2_OBJECT repository variables are required.'
           }
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ACCOUNT_ID)) {
+            throw 'CLOUDFLARE_ACCOUNT_ID repository secret is required.'
+          }
+          aws s3 cp "s3://$($env:R2_BUCKET)/$($env:R2_OBJECT)" hearthstone-refs.zip --endpoint-url "https://$($env:CLOUDFLARE_ACCOUNT_ID).r2.cloudflarestorage.com"
+          Expand-Archive -Path hearthstone-refs.zip -DestinationPath refs -Force
+          Remove-Item hearthstone-refs.zip
 
       - name: Restore dependencies
         run: dotnet restore src/FirestoneCardPopularity.csproj
