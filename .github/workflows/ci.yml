@@ -5,6 +5,7 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +23,19 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Restore private game references
+        shell: pwsh
+        env:
+          REFS_ZIP_B64: ${{ secrets.HEARTHSTONE_REFS_ZIP_B64 }}
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:REFS_ZIP_B64)) {
+            [IO.File]::WriteAllBytes('hearthstone-refs.zip', [Convert]::FromBase64String($env:REFS_ZIP_B64))
+            Expand-Archive -Path hearthstone-refs.zip -DestinationPath refs -Force
+            Remove-Item hearthstone-refs.zip
+          } else {
+            Write-Host 'HEARTHSTONE_REFS_ZIP_B64 is not configured; build will report missing references.'
+          }
 
       - name: Restore dependencies
         run: dotnet restore src/FirestoneCardPopularity.csproj
@@ -72,7 +86,7 @@ jobs:
   release:
     name: Create release
     needs: validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
       contents: write
