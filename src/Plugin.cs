@@ -205,6 +205,18 @@ internal static class CollectionCardVisualPatch
 
     internal static void DrawOverlay()
     {
+        // Tavern Brawl can reuse the same collection card visuals. Do not draw
+        // Standard HSReplay statistics while that mode is active.
+        try
+        {
+            if (GameMgr.Get().IsTavernBrawl()) return;
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.LogWarning($"Unable to determine game mode; suppressing overlay: {ex.Message}");
+            return;
+        }
+
         if (Time.frameCount % 120 == 0) Plugin.Log.LogInfo($"IMGUI overlay: entries={OverlayValues.Count}, screen={Screen.width}x{Screen.height}, camera={(Camera.main != null)}");
         if (OverlayValues.Count == 0) return;
         OverlayStyle.fontSize = Plugin.OverlayFontSize;
