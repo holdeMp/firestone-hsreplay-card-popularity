@@ -14,7 +14,7 @@ The repository currently contains the plugin foundation and statistics client. T
 
 The plugin creates `BepInEx/config/com.firestoneapp.CardPopularity.cfg`:
 
-- `Enabled`: enable requests
+- `Enabled`: enable/disable the plugin overlay and HSReplay requests. In Firestone, use **Settings > Mods > Firestone HSReplay Card Popularity**. Firestone applies the change after a Hearthstone restart.
 - `GameType`: `RANKED_STANDARD`
 - `RankRange`: `BRONZE_THROUGH_GOLD` (HSReplay's Gold page uses this range)
 - `TimeRange`: `LAST_14_DAYS`
