@@ -30,7 +30,13 @@ public sealed class Plugin : BaseUnityPlugin
     internal static int OverlayFontSize { get; private set; }
     internal static int OverlayVerticalOffset { get; private set; }
     internal static int OverlayHorizontalOffset { get; private set; }
+    internal static string OverlayTextColor { get; private set; } = "#FFFFFF";
+    internal static string OverlayPopularColor { get; private set; } = "#55FF55";
+    internal static string OverlayUnpopularColor { get; private set; } = "#FF5555";
+    internal static bool Enabled { get; private set; }
     internal static bool PositionMode { get; private set; }
+    private static bool SettingsOpen;
+    private static Rect SettingsRect = new Rect(40f, 40f, 420f, 430f);
     private static readonly ConcurrentQueue<Action> MainThreadActions = new();
 
     internal static void RunOnMainThread(Action action) => MainThreadActions.Enqueue(action);
@@ -43,6 +49,11 @@ public sealed class Plugin : BaseUnityPlugin
         }
 
         // Read hotkeys from Update rather than OnGUI; Firestone/Overwolf can consume IMGUI key events.
+        if (Input.GetKeyDown(KeyCode.F10) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+        {
+            SettingsOpen = !SettingsOpen;
+            Log.LogInfo($"Settings window: {(SettingsOpen ? "open" : "closed")}");
+        }
         if (Input.GetKeyDown(KeyCode.F9) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
         {
             PositionMode = !PositionMode;
@@ -56,9 +67,9 @@ public sealed class Plugin : BaseUnityPlugin
         if (Input.GetKey(KeyCode.DownArrow)) OverlayVerticalOffset += step;
         if (Input.GetKeyDown(KeyCode.S) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
         {
-            Config["Overlay", "HorizontalOffset"].BoxedValue = OverlayHorizontalOffset;
-            Config["Overlay", "VerticalOffset"].BoxedValue = OverlayVerticalOffset;
-            Config.Save();
+            Instance.Config["Overlay", "HorizontalOffset"].BoxedValue = OverlayHorizontalOffset;
+            Instance.Config["Overlay", "VerticalOffset"].BoxedValue = OverlayVerticalOffset;
+            Instance.Config.Save();
             Log.LogInfo($"Overlay position saved: X={OverlayHorizontalOffset}, Y={OverlayVerticalOffset}");
         }
     }
@@ -66,13 +77,77 @@ public sealed class Plugin : BaseUnityPlugin
     private void OnGUI()
     {
         CollectionCardVisualPatch.DrawOverlay();
+        var evt = Event.current;
+        if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.F10 && (evt.control || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+        {
+            SettingsOpen = !SettingsOpen;
+            evt.Use();
+        }
+        if (SettingsOpen && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
+        {
+            SettingsOpen = false;
+            evt.Use();
+        }
+        if (SettingsOpen) SettingsRect = GUI.Window(987654, SettingsRect, DrawSettingsWindow, "HSReplay Card Popularity");
+    }
+
+    private void DrawSettingsWindow(int id)
+    {
+        GUILayout.BeginVertical();
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("Ctrl+F10 toggles this window.");
+        if (GUILayout.Button("X", GUILayout.Width(28f))) SettingsOpen = false;
+        GUILayout.EndHorizontal();
+        var enabled = GUILayout.Toggle(Enabled, "Enable overlay");
+        if (enabled != Enabled) SetEnabled(enabled);
+        GUILayout.Label($"Font size: {OverlayFontSize}");
+        OverlayFontSize = SliderInt(OverlayFontSize, 12, 64);
+        GUILayout.Label($"Vertical offset: {OverlayVerticalOffset}");
+        OverlayVerticalOffset = SliderInt(OverlayVerticalOffset, -500, 800);
+        GUILayout.Label($"Horizontal offset: {OverlayHorizontalOffset}");
+        OverlayHorizontalOffset = SliderInt(OverlayHorizontalOffset, -800, 800);
+        GUILayout.Label("Text color (hex):");
+        OverlayTextColor = GUILayout.TextField(OverlayTextColor);
+        GUILayout.Label("Popular icon color (hex):");
+        OverlayPopularColor = GUILayout.TextField(OverlayPopularColor);
+        GUILayout.Label("Unpopular icon color (hex):");
+        OverlayUnpopularColor = GUILayout.TextField(OverlayUnpopularColor);
+        if (GUILayout.Button("Save settings")) SaveSettings();
+        GUI.DragWindow(new Rect(0, 0, 10000, 24));
+        GUILayout.EndVertical();
+    }
+
+    private static int SliderInt(int value, int min, int max) => Mathf.RoundToInt(GUILayout.HorizontalSlider(value, min, max));
+
+    private static void SetEnabled(bool value)
+    {
+        Enabled = value;
+        Instance.Config["Firestone", "Enabled"].BoxedValue = value;
+        Instance.Config.Save();
+    }
+
+    private static void SaveSettings()
+    {
+        Instance.Config["Overlay", "FontSize"].BoxedValue = OverlayFontSize;
+        Instance.Config["Overlay", "VerticalOffset"].BoxedValue = OverlayVerticalOffset;
+        Instance.Config["Overlay", "HorizontalOffset"].BoxedValue = OverlayHorizontalOffset;
+        Instance.Config["Firestone", "TextColor"].BoxedValue = OverlayTextColor;
+        Instance.Config["Firestone", "PopularColor"].BoxedValue = OverlayPopularColor;
+        Instance.Config["Firestone", "UnpopularColor"].BoxedValue = OverlayUnpopularColor;
+        Instance.Config.Save();
     }
 
     private void Awake()
     {
         Log = Logger;
         Instance = this;
-        var enabled = Config.Bind("General", "Enabled", true, "Fetch HSReplay card statistics.");
+        // Firestone discovers mods through this metadata and exposes settings
+        // from sections named Firestone (or Firestone.*) in Settings > Mods.
+        Config.Bind("General", "Name", PluginName);
+        Config.Bind("General", "Guid", PluginGuid);
+        Config.Bind("General", "Version", PluginVersion);
+        Config.Bind("General", "DownloadLink", "https://github.com/holdeMp/firestone-hsreplay-card-popularity");
+        var enabled = Config.Bind("Firestone", "Enabled", true, "Enable the HSReplay card popularity overlay.");
         var gameType = Config.Bind("HSReplay", "GameType", "RANKED_STANDARD", "HSReplay game type.");
         var rankRange = Config.Bind("HSReplay", "RankRange", "BRONZE_THROUGH_GOLD", "Gold includes Bronze through Gold on HSReplay.");
         var timeRange = Config.Bind("HSReplay", "TimeRange", "LAST_14_DAYS", "Statistics time range.");
@@ -83,11 +158,26 @@ public sealed class Plugin : BaseUnityPlugin
         var overlayFontSize = Config.Bind("Overlay", "FontSize", 28, "IMGUI overlay font size.");
         var overlayVerticalOffset = Config.Bind("Overlay", "VerticalOffset", 260, "Pixels below card center; increase to move text downward.");
         var overlayHorizontalOffset = Config.Bind("Overlay", "HorizontalOffset", 0, "Horizontal pixel offset.");
+        var overlayTextColor = Config.Bind("Firestone", "TextColor", "#FFFFFF", "Overlay text color as HTML hex, for example #FFFFFF.");
+        var overlayPopularColor = Config.Bind("Firestone", "PopularColor", "#55FF55", "Popular icon color as HTML hex.");
+        var overlayUnpopularColor = Config.Bind("Firestone", "UnpopularColor", "#FF5555", "Unpopular icon color as HTML hex.");
 
+        Enabled = enabled.Value;
+        enabled.SettingChanged += (_, __) =>
+        {
+            Enabled = enabled.Value;
+            Log.LogInfo($"Card popularity overlay {(Enabled ? "enabled" : "disabled")} from configuration.");
+        };
         PopularityThreshold = popularityThreshold.Value;
         OverlayFontSize = overlayFontSize.Value;
         OverlayVerticalOffset = overlayVerticalOffset.Value;
         OverlayHorizontalOffset = overlayHorizontalOffset.Value;
+        OverlayTextColor = overlayTextColor.Value;
+        OverlayPopularColor = overlayPopularColor.Value;
+        OverlayUnpopularColor = overlayUnpopularColor.Value;
+        overlayTextColor.SettingChanged += (_, __) => OverlayTextColor = overlayTextColor.Value;
+        overlayPopularColor.SettingChanged += (_, __) => OverlayPopularColor = overlayPopularColor.Value;
+        overlayUnpopularColor.SettingChanged += (_, __) => OverlayUnpopularColor = overlayUnpopularColor.Value;
         Service = new CardPopularityService(enabled, gameType, rankRange, timeRange, refresh, baseUrl, normalFirst, popularityThreshold);
         Log.LogInfo($"{PluginName} {PluginVersion} loaded");
         var harmony = new Harmony(PluginGuid);
@@ -197,6 +287,11 @@ internal static class CollectionCardVisualPatch
     private static readonly Dictionary<CollectionCardVisual, string> OverlayValues = new();
     private static readonly GUIStyle OverlayStyle = new GUIStyle { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
 
+    private static Color ParseColor(string value, Color fallback)
+    {
+        return ColorUtility.TryParseHtmlString(value, out var color) ? color : fallback;
+    }
+
     internal static void SetOverlay(CollectionCardVisual card, string value)
     {
         OverlayValues[card] = value;
@@ -205,6 +300,7 @@ internal static class CollectionCardVisualPatch
 
     internal static void DrawOverlay()
     {
+        if (!Plugin.Enabled) return;
         // Tavern Brawl can reuse the same collection card visuals. Do not draw
         // Standard HSReplay statistics while that mode is active.
         try
@@ -228,7 +324,7 @@ internal static class CollectionCardVisualPatch
         if (Time.frameCount % 120 == 0) Plugin.Log.LogInfo($"IMGUI overlay: entries={OverlayValues.Count}, screen={Screen.width}x{Screen.height}, camera={(Camera.main != null)}");
         if (OverlayValues.Count == 0) return;
         OverlayStyle.fontSize = Plugin.OverlayFontSize;
-        OverlayStyle.normal.textColor = Color.white;
+        OverlayStyle.normal.textColor = ParseColor(Plugin.OverlayTextColor, Color.white);
         foreach (var pair in OverlayValues.ToArray())
         {
             var card = pair.Key;
@@ -250,6 +346,7 @@ internal static class CollectionCardVisualPatch
 
     private static void Postfix(CollectionCardVisual __instance)
     {
+        if (!Plugin.Enabled) return;
         if (__instance == null || string.IsNullOrEmpty(__instance.CardId)) return;
         Plugin.Log.LogInfo($"Overlay card detected: {__instance.CardId}, shown={__instance.IsShown()}, active={__instance.gameObject.activeInHierarchy}, pos={__instance.transform.position}");
         SetOverlay(__instance, "loading...");
@@ -331,7 +428,7 @@ internal static class CollectionCardVisualPatch
             if (card == null || card.CardId != cardId) return;
             if (stats == null) { SetOverlay(card, "n/a"); return; }
             var popular = stats.IncludedPercent >= Plugin.PopularityThreshold;
-            var icon = popular ? "<color=#55FF55>▲</color>" : "<color=#FF5555>▼</color>";
+            var icon = popular ? $"<color={Plugin.OverlayPopularColor}>▲</color>" : $"<color={Plugin.OverlayUnpopularColor}>▼</color>";
             SetOverlay(card, $"{icon} {stats.IncludedPercent:0.00}%  WR {stats.Winrate:0.00}%");
         });
     }
