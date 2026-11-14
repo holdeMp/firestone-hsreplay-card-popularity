@@ -54,6 +54,11 @@ public sealed class Plugin : BaseUnityPlugin
             SettingsOpen = !SettingsOpen;
             Log.LogInfo($"Settings window: {(SettingsOpen ? "open" : "closed")}");
         }
+        if (Input.GetKeyDown(KeyCode.F8))
+        {
+            SettingsOpen = !SettingsOpen;
+            Log.LogInfo($"Settings window: {(SettingsOpen ? "open" : "closed")} (F8 fallback)");
+        }
         if (Input.GetKeyDown(KeyCode.F9) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
         {
             PositionMode = !PositionMode;
@@ -78,11 +83,6 @@ public sealed class Plugin : BaseUnityPlugin
     {
         CollectionCardVisualPatch.DrawOverlay();
         var evt = Event.current;
-        if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.F10 && (evt.control || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
-        {
-            SettingsOpen = !SettingsOpen;
-            evt.Use();
-        }
         if (SettingsOpen && evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
         {
             SettingsOpen = false;
